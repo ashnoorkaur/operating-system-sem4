@@ -1,10 +1,22 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import numpy as np
+from azure.storage.blob import BlobServiceClient
+from dotenv import load_dotenv
+import os
+import time
+
+load_dotenv()
+
 
 print("Loading dataset...")
-df = pd.read_csv('All_Diets.csv')
-print("Dataset loaded successfully!\n")
+try:
+    df = pd.read_csv('All_Diets.csv')
+    print("Dataset loaded successfully!\n")
+except FileNotFoundError:
+    print("ERROR: 'All_Diets.csv' not found. Make sure the file exists in the same directory.")
+    exit()
 
 print(df.head())
 
@@ -28,32 +40,29 @@ print("\nCleaned dataset saved as 'All_Diets_cleaned.csv'")
 print("\nGenerating visualizations...")
 
 plt.figure(figsize=(10, 5))
-sns.barplot(x=avg_macros.index, y=avg_macros['Protein(g)'])
+sns.barplot(x=avg_macros.index, y=avg_macros['Protein(g)'], palette='coolwarm')
 plt.title('Average Protein by Diet Type')
 plt.xlabel('Diet Type')
 plt.ylabel('Protein (g)')
 plt.xticks(rotation=45)
 plt.tight_layout()
 plt.savefig('avg_protein_bar_chart.png')
-plt.show()
+plt.close()
 
 plt.figure(figsize=(10, 5))
-sns.scatterplot(data=top_protein, x='Carbs(g)', y='Protein(g)', hue='Diet_type')
+sns.scatterplot(data=top_protein, x='Carbs(g)', y='Protein(g)', hue='Diet_type', palette='viridis', s=80)
 plt.title('Top 5 Protein-Rich Recipes (Protein vs Carbs)')
 plt.xlabel('Carbs (g)')
 plt.ylabel('Protein (g)')
-plt.legend(title='Diet Type')
+plt.legend(title='Diet Type', bbox_to_anchor=(1.05, 1), loc='upper left')
 plt.tight_layout()
 plt.savefig('protein_scatter_plot.png')
-plt.show()
+plt.close()
 
-print("\nVisualizations saved as:")
+print("\nVisualizations saved:")
 print(" - avg_protein_bar_chart.png")
 print(" - protein_scatter_plot.png")
-
-print("\n Task 1 completed successfully!")
-
-import numpy as np
+print("\nTask 1 completed successfully!")
 
 print("\nStarting Task 2 (NumPy-based analysis)...")
 
@@ -61,7 +70,7 @@ protein = df['Protein(g)'].to_numpy()
 carbs = df['Carbs(g)'].to_numpy()
 fat = df['Fat(g)'].to_numpy()
 
-print("\nNumpy statistical results:")
+print("\nNumPy Statistical Results:")
 print(f"Mean Protein: {np.mean(protein):.2f}")
 print(f"Mean Carbs: {np.mean(carbs):.2f}")
 print(f"Mean Fat: {np.mean(fat):.2f}")
@@ -72,7 +81,6 @@ total_macros = np.column_stack((protein, carbs, fat))
 total_sum = np.sum(total_macros, axis=1)
 
 df['Total_macros'] = total_sum
-
 df.to_csv('All_Diets_NP_Results.csv', index=False)
 print("\nUpdated dataset saved as 'All_Diets_NP_Results.csv'")
 
@@ -83,8 +91,49 @@ plt.xlabel('Total Macronutrient Content')
 plt.ylabel('Number of Recipes')
 plt.tight_layout()
 plt.savefig('total_macros_histogram.png')
-plt.show()
+plt.close()
 
-print("\nTask 2 completed successfully!")
-print("\nVisualizations saved as:")
+print("\nVisualizations saved:")
 print(" - total_macros_histogram.png")
+print("\nTask 2 completed successfully!")
+
+print("\nStarting Task 3: Uploading files to Azure Blob Storage...\n")
+
+CONTAINER_NAME = "diets-data"
+connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+
+if not connection_string:
+    print("Azure connection string not found in environment variables.")
+    print("Set it using:")
+    print("   export AZURE_STORAGE_CONNECTION_STRING='your_connection_string_here'")
+    exit()
+
+try:
+    blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+    container_client = blob_service_client.get_container_client(CONTAINER_NAME)
+
+    files_to_upload = [
+        "All_Diets_cleaned.csv",
+        "All_Diets_NP_Results.csv",
+        "avg_protein_bar_chart.png",
+        "protein_scatter_plot.png",
+        "total_macros_histogram.png"
+    ]
+
+    for file_name in files_to_upload:
+        if os.path.exists(file_name):
+            print(f"Uploading {file_name} ...")
+            with open(file_name, "rb") as data:
+                container_client.upload_blob(name=file_name, data=data, overwrite=True)
+            print(f"Uploaded: {file_name}")
+            time.sleep(1)
+        else:
+            print(f"Skipped: {file_name} not found locally.")
+
+    print("\nAll available files uploaded successfully to Azure Blob Storage!")
+    print(f"Container name: {CONTAINER_NAME}")
+
+except Exception as e:
+    print("Error during Azure upload:", e)
+
+print("\nAll Tasks (1, 2, and 3) executed successfully!")
